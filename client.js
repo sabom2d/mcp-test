@@ -5,9 +5,9 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 async function main() {
   // 1) HTTP-Transport korrekt initialisieren
-  const transport = new StreamableHTTPClientTransport({
-    url: "http://localhost:8080/mcp"
-  });
+  const transport = new StreamableHTTPClientTransport(
+    new URL("http://localhost:8080/mcp")
+  );
 
   // 2) Client mit Name/Version
   const client = new Client({
@@ -20,16 +20,13 @@ async function main() {
     await client.connect(transport);
 
     // 4) Tools abrufen
-    const tools = await client.request({ method: "tools/list" });
+    const tools = await client.listTools();
     console.log("Tools:", JSON.stringify(tools, null, 2));
 
     // 5) Tool ausführen
-    const result = await client.request({
-      method: "tools/call",
-      params: {
-        name: "hello_world",
-        arguments: { name: "Rene" }
-      }
+    const result = await client.callTool({
+      name: "hello_world",
+      arguments: { name: "Rene" }
     });
     console.log("Result:", JSON.stringify(result, null, 2));
 

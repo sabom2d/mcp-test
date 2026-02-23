@@ -9,41 +9,42 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // -------------------------------------------------------------
-// 1) MCP Server mit Tools-Capability
+// 1) Server-Factory – new instance per request (stateless mode)
 // -------------------------------------------------------------
-const server = new Server(
-  { name: "mcp-test-server", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+function createServer() {
+  const server = new Server(
+    { name: "mcp-test-server", version: "1.0.0" },
+    { capabilities: { tools: {} } }
+  );
 
-// -------------------------------------------------------------
-// 2) Tools implementieren
-// -------------------------------------------------------------
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    {
-      name: "hello_world",
-      description: "Gibt eine Grußnachricht zurück",
-      inputSchema: {
-        type: "object",
-        properties: { name: { type: "string" } },
-        required: ["name"]
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "hello_world",
+        description: "Gibt eine Grußnachricht zurück",
+        inputSchema: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"]
+        }
       }
-    }
-  ]
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const arg = request.params.arguments?.name ?? "Unbekannt";
-  return {
-    content: [
-      { type: "text", text: `Hallo ${arg}, MCP-HTTP funktioniert jetzt! 🎉` }
     ]
-  };
-});
+  }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const arg = request.params.arguments?.name ?? "Unbekannt";
+    return {
+      content: [
+        { type: "text", text: `Hallo ${arg}, MCP-HTTP funktioniert jetzt! 🎉` }
+      ]
+    };
+  });
+
+  return server;
+}
 
 // -------------------------------------------------------------
-// 3) HTTP-Server – fresh transport per request (stateless mode)
+// 2) HTTP-Server – fresh server + transport per request
 // -------------------------------------------------------------
 const httpServer = http.createServer(async (req, res) => {
   const path = req.url.split("?")[0];
@@ -53,6 +54,7 @@ const httpServer = http.createServer(async (req, res) => {
   console.log("Path:", path);
 
   if (path === "/mcp" || path === "/mcp/") {
+    const server = createServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true
@@ -62,7 +64,7 @@ const httpServer = http.createServer(async (req, res) => {
       console.log("-> Routing to transport.handleRequest()");
       await transport.handleRequest(req, res);
       console.log("-> handleRequest() finished OK");
-      res.on("close", () => { transport.close(); });
+      res.on("close", () => { transport.close(); server.close(); });
     } catch (err) {
       console.error("\n🔥 ERROR INSIDE transport.handleRequest():", err);
       if (!res.headersSent) {
@@ -77,7 +79,7 @@ const httpServer = http.createServer(async (req, res) => {
   }
 });
 // -------------------------------------------------------------
-// 4) Server starten
+// 3) Server starten
 // -------------------------------------------------------------
 const PORT = 8080;
 httpServer.listen(PORT, () => {
