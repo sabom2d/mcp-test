@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Test UI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #1a1a1a; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.4rem; }
+    p.subtitle { font-size: 0.875rem; color: #666; margin-bottom: 1.5rem; }
+    #status { font-size: 0.8rem; font-weight: 500; margin-bottom: 2rem; padding: 0.4rem 0.9rem; border-radius: 20px; display: inline-block; }
+    .status-loading { background: #dbeafe; color: #1d4ed8; }
+    .status-ok  { background: #dcfce7; color: #166534; }
+    .status-err { background: #fee2e2; color: #991b1b; }
+    #tools { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+    .tool-card { background: #fff; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .tool-name { font-size: 0.95rem; font-weight: 700; font-family: monospace; color: #0070f3; margin-bottom: 0.3rem; }
+    .tool-desc { font-size: 0.85rem; color: #555; margin-bottom: 1.25rem; line-height: 1.4; }
+    .form-group { margin-bottom: 0.85rem; }
+    label { display: block; font-size: 0.78rem; font-weight: 600; color: #333; margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    label .req { color: #e03; margin-left: 2px; }
+    input[type="text"] { width: 100%; padding: 0.45rem 0.65rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.875rem; transition: border-color 0.15s; }
+    input[type="text"]:focus { outline: none; border-color: #0070f3; box-shadow: 0 0 0 3px rgba(0,112,243,0.12); }
+    .btn-call { background: #0070f3; color: #fff; border: none; padding: 0.5rem 1.25rem; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500; margin-top: 0.25rem; transition: background 0.15s; }
+    .btn-call:hover:not(:disabled) { background: #005cc5; }
+    .btn-call:disabled { background: #93c5fd; cursor: not-allowed; }
+    .result { margin-top: 1rem; padding: 0.8rem 1rem; background: #f8fafc; border-radius: 6px; border-left: 3px solid #0070f3; font-size: 0.8rem; font-family: monospace; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+    .result.error { border-color: #e03; background: #fff8f8; color: #c00; }
+    .no-inputs { font-size: 0.8rem; color: #888; font-style: italic; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>MCP Test UI</h1>
+  <p class="subtitle">Browse and call tools exposed by the local MCP server.</p>
+  <div id="status" class="status-loading">Loading tools…</div>
+  <div id="tools"></div>
+
+  <script>
+    const MCP_URL = '/mcp';
+    let reqId = 0;
+
+    async function mcpPost(method, params = {}) {
+      const res = await fetch(MCP_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream'
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: ++reqId, method, params })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      return res.json();
+    }
+
+    async function initialize() {
+      return mcpPost('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'mcp-web-ui', version: '1.0.0' }
+      });
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = `status-${type}`;
+    }
+
+    function buildToolCard(tool) {
+      const schema = tool.inputSchema || { type: 'object', properties: {}, required: [] };
+      const props = schema.properties || {};
+      const required = new Set(schema.required || []);
+
+      const card = document.createElement('div');
+      card.className = 'tool-card';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'tool-name';
+      nameEl.textContent = tool.name;
+      card.appendChild(nameEl);
+
+      if (tool.description) {
+        const descEl = document.createElement('div');
+        descEl.className = 'tool-desc';
+        descEl.textContent = tool.description;
+        card.appendChild(descEl);
+      }
+
+      const form = document.createElement('form');
+      const inputs = {};
+      const propEntries = Object.entries(props);
+
+      if (propEntries.length === 0) {
+        const note = document.createElement('p');
+        note.className = 'no-inputs';
+        note.textContent = 'No input parameters.';
+        form.appendChild(note);
+      }
+
+      for (const [key, prop] of propEntries) {
+        const group = document.createElement('div');
+        group.className = 'form-group';
+
+        const label = document.createElement('label');
+        label.textContent = key;
+        if (required.has(key)) {
+          const star = document.createElement('span');
+          star.className = 'req';
+          star.textContent = '*';
+          label.appendChild(star);
+        }
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = prop.description || prop.type || '';
+        if (required.has(key)) input.required = true;
+
+        group.appendChild(label);
+        group.appendChild(input);
+        form.appendChild(group);
+        inputs[key] = input;
+      }
+
+      const btn = document.createElement('button');
+      btn.type = 'submit';
+      btn.className = 'btn-call';
+      btn.textContent = 'Call';
+      form.appendChild(btn);
+
+      const resultEl = document.createElement('div');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.textContent = 'Calling…';
+        resultEl.className = 'result';
+        resultEl.textContent = '';
+
+        const args = {};
+        for (const [key, input] of Object.entries(inputs)) {
+          if (input.value !== '') args[key] = input.value;
+        }
+
+        try {
+          await initialize();
+          const resp = await mcpPost('tools/call', { name: tool.name, arguments: args });
+          if (resp.error) {
+            resultEl.className = 'result error';
+            resultEl.textContent = JSON.stringify(resp.error, null, 2);
+          } else {
+            const content = resp.result?.content ?? resp.result;
+            resultEl.textContent = Array.isArray(content)
+              ? content.map(c => c.text ?? JSON.stringify(c)).join('\n')
+              : JSON.stringify(content, null, 2);
+          }
+        } catch (err) {
+          resultEl.className = 'result error';
+          resultEl.textContent = err.message;
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Call';
+      });
+
+      card.appendChild(form);
+      card.appendChild(resultEl);
+      return card;
+    }
+
+    async function loadTools() {
+      try {
+        await initialize();
+        const resp = await mcpPost('tools/list');
+        if (resp.error) throw new Error(resp.error.message || JSON.stringify(resp.error));
+        const tools = resp.result?.tools ?? [];
+        setStatus(`Connected — ${tools.length} tool${tools.length !== 1 ? 's' : ''} available`, 'ok');
+        const container = document.getElementById('tools');
+        container.innerHTML = '';
+        for (const tool of tools) {
+          container.appendChild(buildToolCard(tool));
+        }
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, 'err');
+      }
+    }
+
+    loadTools();
+  </script>
+</body>
+</html>
