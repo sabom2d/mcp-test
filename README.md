@@ -5,7 +5,7 @@ A minimal MCP (Model Context Protocol) server using the Streamable HTTP transpor
 ## Features
 
 - Exposes a `hello_world` tool via the MCP protocol
-- Uses stateless Streamable HTTP transport (one transport instance per request)
+- Uses stateless Streamable HTTP transport (fresh server + transport instance per request)
 - Responds with JSON on port 8080
 
 ## Requirements
@@ -47,3 +47,13 @@ node client.js
 ```
 
 The client connects to `http://localhost:8080/mcp`, lists available tools, and calls the `hello_world` tool.
+
+Expected output:
+
+```json
+Tools: { "tools": [{ "name": "hello_world", ... }] }
+Result: { "content": [{ "type": "text", "text": "Hallo Rene, MCP-HTTP funktioniert jetzt! 🎉" }] }
+```
+
+> **Note:** The client uses `client.listTools()` and `client.callTool()` (typed helpers from SDK v1.26+).
+> Raw `client.request()` calls require an explicit result schema and will error without one.
