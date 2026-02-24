@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const config = require("../config.json");
-const allowedDirs = (config.read_file?.allowed_dirs ?? []).map(d => nodePath.resolve(d));
+const allowedDirs = (config.allowed_dirs ?? []).map(d => nodePath.resolve(d));
 
 function isAllowed(filePath) {
   return allowedDirs.some(dir => filePath.startsWith(dir + nodePath.sep) || filePath === dir);
