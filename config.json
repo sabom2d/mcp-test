@@ -1,0 +1,7 @@
+{
+  "read_file": {
+    "allowed_dirs": [
+      "/home/sysinstaller/mcp-test"
+    ]
+  }
+}

@@ -3,7 +3,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import nodePath from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -14,7 +14,19 @@ import {
 const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
 
 // -------------------------------------------------------------
-// 1) Server-Factory – new instance per request (stateless mode)
+// 1) Tools dynamisch aus tools/ laden
+// -------------------------------------------------------------
+const toolsDir = nodePath.join(__dirname, "tools");
+const toolModules = {};
+
+for (const file of fs.readdirSync(toolsDir).filter(f => f.endsWith(".js"))) {
+  const mod = await import(pathToFileURL(nodePath.join(toolsDir, file)).href);
+  toolModules[mod.definition.name] = mod;
+  console.log(`Tool geladen: ${mod.definition.name}`);
+}
+
+// -------------------------------------------------------------
+// 2) Server-Factory – new instance per request (stateless mode)
 // -------------------------------------------------------------
 function createServer() {
   const server = new Server(
@@ -23,33 +35,22 @@ function createServer() {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: "hello_world",
-        description: "Gibt eine Grußnachricht zurück",
-        inputSchema: {
-          type: "object",
-          properties: { name: { type: "string" } },
-          required: ["name"]
-        }
-      }
-    ]
+    tools: Object.values(toolModules).map(t => t.definition)
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const arg = request.params.arguments?.name ?? "Unbekannt";
-    return {
-      content: [
-        { type: "text", text: `Hallo ${arg}, MCP-HTTP funktioniert jetzt! 🎉` }
-      ]
-    };
+    const tool = toolModules[request.params.name];
+    if (!tool) {
+      throw new Error(`Unbekanntes Tool: ${request.params.name}`);
+    }
+    return tool.execute(request.params.arguments);
   });
 
   return server;
 }
 
 // -------------------------------------------------------------
-// 2) HTTP-Server – fresh server + transport per request
+// 3) HTTP-Server – fresh server + transport per request
 // -------------------------------------------------------------
 const httpServer = http.createServer(async (req, res) => {
   const urlPath = req.url.split("?")[0];
@@ -96,10 +97,12 @@ const httpServer = http.createServer(async (req, res) => {
     res.end("Not found");
   }
 });
+
 // -------------------------------------------------------------
-// 3) Server starten
+// 4) Server starten
 // -------------------------------------------------------------
 const PORT = 8080;
 httpServer.listen(PORT, () => {
   console.log(`MCP HTTP-Server läuft korrekt auf http://127.0.0.1:${PORT}/mcp`);
+  console.log(`${Object.keys(toolModules).length} Tool(s) registriert: ${Object.keys(toolModules).join(", ")}`);
 });
